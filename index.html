@@ -1697,15 +1697,33 @@
                 return;
             }
             
+            // التحقق من صحة البريد الإلكتروني
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showAlert('student-register-alert', 'error', 'البريد الإلكتروني غير صالح');
+                return;
+            }
+            
+            // التحقق من قوة كلمة المرور
+            if (password.length < 6) {
+                showAlert('student-register-alert', 'error', 'كلمة المرور يجب أن تكون على الأقل 6 أحرف');
+                return;
+            }
+            
             // عرض مؤشر تحميل وتعطيل الزر
             registerBtn.innerHTML = '<i class="fas fa-spinner spinner"></i> جاري التسجيل...';
             registerBtn.disabled = true;
             
-            // محاكاة اتصال API
+            // تسجيل الطالب في API
             fetch(`${API_BASE_URL}/students/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, email, faculty, password })
+                body: JSON.stringify({ 
+                    name, 
+                    email, 
+                    faculty, 
+                    password 
+                })
             })
             .then(response => response.json())
             .then(data => {
@@ -1726,13 +1744,13 @@
                         registerBtn.disabled = false;
                     }, 1500);
                 } else {
-                    showAlert('student-register-alert', 'error', data.message);
+                    showAlert('student-register-alert', 'error', data.message || 'حدث خطأ أثناء التسجيل');
                     registerBtn.innerHTML = '<i class="fas fa-user-plus"></i> تسجيل';
                     registerBtn.disabled = false;
                 }
             })
             .catch(error => {
-                showAlert('student-register-alert', 'error', 'حدث خطأ أثناء التسجيل');
+                showAlert('student-register-alert', 'error', 'حدث خطأ في الاتصال بالخادم');
                 registerBtn.innerHTML = '<i class="fas fa-user-plus"></i> تسجيل';
                 registerBtn.disabled = false;
             });
@@ -2259,6 +2277,7 @@
             })
             .catch(error => {
                 console.error('حدث خطأ أثناء جلب المواد:', error);
+                container.innerHTML = '<p>حدث خطأ أثناء جلب المواد. يرجى المحاولة لاحقًا.</p>';
             });
         }
         
@@ -2335,32 +2354,44 @@
             
             if (!faculty) return;
             
-            const departments = facultiesData[faculty].departments;
-            
-            if (departments.length === 0) {
-                container.innerHTML = '<p>لا توجد أقسام لهذه الكلية</p>';
-                return;
-            }
-            
-            const list = document.createElement('div');
-            list.className = 'departments-list';
-            list.innerHTML = '<h3>الأقسام الحالية:</h3>';
-            
-            departments.forEach(dept => {
-                const deptItem = document.createElement('div');
-                deptItem.className = 'department-item';
-                deptItem.innerHTML = `
-                    <span>${dept}</span>
-                    <div class="department-actions">
-                        <button class="delete-btn" onclick="deleteDepartment('${faculty}', '${dept}')">
-                            <i class="fas fa-trash"></i> حذف
-                        </button>
-                    </div>
-                `;
-                list.appendChild(deptItem);
+            // جلب الأقسام من API
+            fetch(`${API_BASE_URL}/departments?faculty=${faculty}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const departments = data.departments;
+                    
+                    if (departments.length === 0) {
+                        container.innerHTML = '<p>لا توجد أقسام لهذه الكلية</p>';
+                        return;
+                    }
+                    
+                    const list = document.createElement('div');
+                    list.className = 'departments-list';
+                    list.innerHTML = '<h3>الأقسام الحالية:</h3>';
+                    
+                    departments.forEach(dept => {
+                        const deptItem = document.createElement('div');
+                        deptItem.className = 'department-item';
+                        deptItem.innerHTML = `
+                            <span>${dept}</span>
+                            <div class="department-actions">
+                                <button class="delete-btn" onclick="deleteDepartment('${faculty}', '${dept}')">
+                                    <i class="fas fa-trash"></i> حذف
+                                </button>
+                            </div>
+                        `;
+                        list.appendChild(deptItem);
+                    });
+                    
+                    container.appendChild(list);
+                } else {
+                    showAlert('departments-alert', 'error', 'حدث خطأ أثناء جلب الأقسام');
+                }
+            })
+            .catch(error => {
+                showAlert('departments-alert', 'error', 'حدث خطأ في الاتصال بالخادم');
             });
-            
-            container.appendChild(list);
         }
         
         function addDepartment() {
@@ -2382,34 +2413,34 @@
                 return;
             }
             
-            // إضافة القسم إلى البيانات المحلية
-            if (!facultiesData[faculty].departments.includes(newDept)) {
-                facultiesData[faculty].departments.push(newDept);
-                
-                // تحديث في API
-                fetch(`${API_BASE_URL}/departments`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ faculty, department: newDept })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showAlert('departments-alert', 'success', 'تمت إضافة القسم بنجاح');
-                        loadDepartments();
-                    } else {
-                        showAlert('departments-alert', 'error', 'حدث خطأ أثناء إضافة القسم');
+            // إضافة القسم إلى API
+            fetch(`${API_BASE_URL}/departments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ faculty, department: newDept })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('departments-alert', 'success', 'تمت إضافة القسم بنجاح');
+                    
+                    // تحديث البيانات المحلية
+                    if (!facultiesData[faculty].departments.includes(newDept)) {
+                        facultiesData[faculty].departments.push(newDept);
                     }
-                })
-                .catch(error => {
-                    showAlert('departments-alert', 'error', 'حدث خطأ أثناء إضافة القسم');
-                });
-            } else {
-                showAlert('departments-alert', 'error', 'هذا القسم موجود بالفعل');
-            }
-            
-            // مسح حقل الإدخال
-            document.getElementById('new-department').value = '';
+                    
+                    // إعادة تحميل الأقسام
+                    loadDepartments();
+                    
+                    // مسح حقل الإدخال
+                    document.getElementById('new-department').value = '';
+                } else {
+                    showAlert('departments-alert', 'error', data.message);
+                }
+            })
+            .catch(error => {
+                showAlert('departments-alert', 'error', 'حدث خطأ أثناء إضافة القسم');
+            });
         }
         
         function deleteDepartment(faculty, department) {
@@ -2420,29 +2451,32 @@
             
             if (!confirm(`هل أنت متأكد من حذف قسم ${department}؟`)) return;
             
-            const index = facultiesData[faculty].departments.indexOf(department);
-            if (index !== -1) {
-                facultiesData[faculty].departments.splice(index, 1);
-                
-                // تحديث في API
-                fetch(`${API_BASE_URL}/departments`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ faculty, department })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showAlert('departments-alert', 'success', 'تم حذف القسم بنجاح');
-                        loadDepartments();
-                    } else {
-                        showAlert('departments-alert', 'error', 'حدث خطأ أثناء حذف القسم');
+            // حذف القسم من API
+            fetch(`${API_BASE_URL}/departments`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ faculty, department })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('departments-alert', 'success', 'تم حذف القسم بنجاح');
+                    
+                    // تحديث البيانات المحلية
+                    const index = facultiesData[faculty].departments.indexOf(department);
+                    if (index !== -1) {
+                        facultiesData[faculty].departments.splice(index, 1);
                     }
-                })
-                .catch(error => {
+                    
+                    // إعادة تحميل الأقسام
+                    loadDepartments();
+                } else {
                     showAlert('departments-alert', 'error', 'حدث خطأ أثناء حذف القسم');
-                });
-            }
+                }
+            })
+            .catch(error => {
+                showAlert('departments-alert', 'error', 'حدث خطأ أثناء حذف القسم');
+            });
         }
         
         // وظائف الدردشة
